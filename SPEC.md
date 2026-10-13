@@ -1,6 +1,6 @@
 # pizza2go — spec
 
-An offline PWA for writing small Go packages on a phone (with a Clicks keyboard) against tests you wrote yourself, then exporting them unchanged into real modules at home. Built on [pizza-starter](https://github.com/devp/psychic-meme/tree/main/pizza-starter).
+An offline PWA for writing small Go packages on an Android phone (with a Clicks keyboard) against tests you wrote yourself, then exporting them unchanged into real modules at home. Built on [pizza-starter](https://github.com/devp/psychic-meme/tree/main/pizza-starter).
 
 ## Decisions
 
@@ -75,16 +75,16 @@ CodeMirror 6, vendored, mounted inside a Lit element. Go language mode via `@cod
 
 ## Spike (first)
 
-Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. The deployed spike at `/spike/` was run on desktop Chrome and on Android Chrome (the target device). iOS is not a target. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
+Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. The deployed spike at `/spike/` was run on desktop Chrome and on a Pixel 8a in Android Chrome (the target device). iOS is not a target. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
 
-| Metric | Desktop Chromium (headless, my VM) | Deployed spike, desktop Chrome | Deployed spike, Android Chrome |
+| Metric | Desktop Chromium (headless, my VM) | Deployed spike, desktop Chrome | Deployed spike, Pixel 8a, Android Chrome |
 |---|---|---|---|
-| `cmd/compile` builds and runs on wasip1 at all | Yes. Compile, link, and run of a package with 3 tests passes (`-test.v` output correct). | Yes, same result: 3 tests pass | | Yes: 3 tests pass |
-| Size: compile.wasm / link.wasm / std archives (raw, gzip, brotli) | compile 38.5 / 8.1 / 5.3 MB; link 10.1 / 2.7 / 1.9 MB; std (135 archives, full allowlist) 42.8 / 9.9 / 7.1 MB (brotli q9). Total ≈ 14.3MB brotli | Same toolchain files, but built by CI with the latest Go 1.24.x: compile 40.7MB, link 10.6MB, std 47.0MB (138 files), checker 9.0MB raw | | Same files as the desktop Chrome column |
-| Cold load: fetch + `compileStreaming` for each tool | compile 195ms, link 88ms, checker 68ms, std 381ms (all localhost, uncompressed; used `compile(bytes)`, not streaming) | compile fetch 1029ms + compile 34ms; link 454ms; std 976ms; checker 181ms (over the real Cloudflare deploy, before caching) | | compile fetch 3.9s + compile 82ms; link 334ms; std 5.6s; checker 327ms. About 10s of downloading in total, before any caching (network unknown) |
-| Warm compile+link+run, hello package with 3 tests | First run 2.5s (V8 tier-up), then 1.0s, then 0.5-0.6s: compile pkg ~70ms, compile main ~80-140ms, link ~350-650ms, run ~25ms | First run 452ms, warm 208-214ms (compile pkg 20-28, compile main ~29, link 140-153, run 2-14) | | First run 2.1s (compile pkg 777, compile main 242, link 961, run 77). Warm 0.70-0.79s (link 447-502, compile pkg 70-105, compile main ~120, run ~48) |
-| Peak memory during link | link instance's wasm memory ended at 104MB (compile: 24-28MB); JS heap ~190MB. That's a lower bound on peak, since the JS-side file copies are on top | link wasm memory 100MB (compile 24-28MB); JS heap 77-116MB | | link wasm memory 100MB (compile 24-28MB); JS heap 78MB. No out-of-memory failures |
-| checker.wasm size, and `check()` latency on a 100-line file | 9.0MB raw; 117-line file parse + typecheck (against std export data) + format: 150ms cold, 26-31ms warm. It reported the seeded type error at the right line/col | 53ms cold, 7-8ms warm; same diagnostic at the same line/col | | 264ms cold, 23-27ms warm; same diagnostic at the same line/col |
+| `cmd/compile` builds and runs on wasip1 at all | Yes. Compile, link, and run of a package with 3 tests passes (`-test.v` output correct). | Yes, same result: 3 tests pass | Yes: 3 tests pass |
+| Size: compile.wasm / link.wasm / std archives (raw, gzip, brotli) | compile 38.5 / 8.1 / 5.3 MB; link 10.1 / 2.7 / 1.9 MB; std (135 archives, full allowlist) 42.8 / 9.9 / 7.1 MB (brotli q9). Total ≈ 14.3MB brotli | Same toolchain files, but built by CI with the latest Go 1.24.x: compile 40.7MB, link 10.6MB, std 47.0MB (138 files), checker 9.0MB raw | Same files as the desktop Chrome column |
+| Cold load: fetch + `compileStreaming` for each tool | compile 195ms, link 88ms, checker 68ms, std 381ms (all localhost, uncompressed; used `compile(bytes)`, not streaming) | compile fetch 1029ms + compile 34ms; link 454ms; std 976ms; checker 181ms (over the real Cloudflare deploy, before caching) | compile fetch 3.9s + compile 82ms; link 334ms; std 5.6s; checker 327ms. About 10s of downloading in total, before any caching (network unknown) |
+| Warm compile+link+run, hello package with 3 tests | First run 2.5s (V8 tier-up), then 1.0s, then 0.5-0.6s: compile pkg ~70ms, compile main ~80-140ms, link ~350-650ms, run ~25ms | First run 452ms, warm 208-214ms (compile pkg 20-28, compile main ~29, link 140-153, run 2-14) | First run 2.1s (compile pkg 777, compile main 242, link 961, run 77). Warm 0.70-0.79s (link 447-502, compile pkg 70-105, compile main ~120, run ~48) |
+| Peak memory during link | link instance's wasm memory ended at 104MB (compile: 24-28MB); JS heap ~190MB. That's a lower bound on peak, since the JS-side file copies are on top | link wasm memory 100MB (compile 24-28MB); JS heap 77-116MB | link wasm memory 100MB (compile 24-28MB); JS heap 78MB. No out-of-memory failures |
+| checker.wasm size, and `check()` latency on a 100-line file | 9.0MB raw; 117-line file parse + typecheck (against std export data) + format: 150ms cold, 26-31ms warm. It reported the seeded type error at the right line/col | 53ms cold, 7-8ms warm; same diagnostic at the same line/col | 264ms cold, 23-27ms warm; same diagnostic at the same line/col |
 
 Findings:
 
@@ -95,18 +95,19 @@ Findings:
 - **testmain** imports `testing/internal/testdeps` (a `go list` dependency we have to add to the export list; `build.sh` does).
 - **Not measured:** vet passes (`x/tools/go/analysis`) and the `tests()` listing in the checker. `check()` and `format()` are done.
 - The shim's `poll_oneoff` busy-waits, and its in-memory files reallocate on every growing write. Both are fine for the spike, but watch them if the linker's output writes get slow on the phone.
+- **Android works.** On the Pixel 8a, compile+link+run of the hello package takes 2.1s the first time and about 0.7s after. Link uses 100MB of wasm memory with no failures. The checker answers in about 25ms warm, which is fine for live diagnostics. The cost is the first-run download (~100MB, about 10s on this connection), which makes the one-time cache and `persist()` from Offline and storage necessary.
 
-If compile+link is too slow on the phone, ship the checker only and run tests at home.
+The fallback of shipping the checker only is not needed: compile+link is fast enough on the Pixel 8a.
 
 ## Open questions
 
-- Phone numbers for the spike. Re-check the allowlist if the phone runs out of memory or load time is too slow.
+- Whether the download size (~14MB brotli) is acceptable on mobile data; consider showing progress and Wi-Fi-only fetching on first run.
 
 ## Resolved
 
 - **Go version pinning:** pinned per toolchain release; updates are detected through the manifest and the normal site-update flow (see Offline and storage).
 - **Starter provenance:** by the time this is scaffolded, pizza-starter will support setting up into other directories, so we scaffold into this repo with `just new-app`-style tooling and keep the `STARTER` stamp. No hand-copying, and the app doesn't move into psychic-meme.
-- **iOS Safari memory cap:** unknown until the spike. Show a one-time toast to first-time iOS Safari users saying that compiling and linking may run out of memory there and may fail. Low priority; don't build anything more elaborate.
+- **iOS Safari memory cap:** not a target. The device is a Pixel 8a (Android Chrome), where link used 100MB without trouble, and iOS has not been tested. Keep the one-time toast for first-time iOS Safari users (compiling and linking may run out of memory there and may fail) as a low-priority nicety, in case the app gets shared. Don't build anything more elaborate.
 
 ## Stdlib allowlist
 
