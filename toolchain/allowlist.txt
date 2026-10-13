@@ -1,0 +1,52 @@
+# Stdlib packages shipped to the browser. Input to the toolchain build; see SPEC.md.
+# core
+fmt
+errors
+strings
+strconv
+sort
+slices
+maps
+cmp
+iter
+math
+math/rand
+unicode
+unicode/utf8
+bytes
+io
+bufio
+os
+time
+testing
+# concurrency
+sync
+sync/atomic
+context
+# common in tutorials, modest size
+regexp
+encoding/json
+container/heap
+container/list
+text/tabwriter
+math/cmplx
+math/bits
+math/big
+path
+path/filepath
+io/fs
+flag
+log
+log/slog
+# only if the spike shows room
+text/template
+testing/quick
+testing/fstest
+testing/iotest
+encoding/csv
+encoding/hex
+encoding/base64
+hash/fnv
+crypto/sha256
+crypto/md5
+image

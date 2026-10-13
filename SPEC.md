@@ -44,7 +44,7 @@ WASI shim: `@bjorn3/browser_wasi_shim` (or equivalent), vendored.
 ### Known limits
 
 - Single-threaded: goroutines work, but there's no parallelism and no `-race`.
-- No network or real OS. `httptest` with an in-process handler is untested.
+- No network or real OS. `net/*` (including `httptest`) is out of the allowlist.
 - Infinite loops are caught only by the runner timeout.
 
 ### Editor
@@ -75,22 +75,32 @@ CodeMirror 6, vendored, mounted inside a Lit element. Go language mode via `@cod
 
 ## Spike (first)
 
-Measure on the phone before building any UI. The results go here.
+Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. **Phone numbers are still to do:** serve `spike/` from a laptop (or deploy it) and open `spike/index.html` on the phone. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
 
-| Metric | Result |
-|---|---|
-| `cmd/compile` builds and runs on wasip1 at all | |
-| Size: compile.wasm / link.wasm / std archives (raw, gzip, brotli) | |
-| Cold load: fetch + `compileStreaming` for each tool | |
-| Warm compile+link+run, hello package with 3 tests | |
-| Peak memory during link | |
-| checker.wasm size, and `check()` latency on a 100-line file | |
+| Metric | Desktop Chromium | Phone |
+|---|---|---|
+| `cmd/compile` builds and runs on wasip1 at all | Yes. Compile, link, and run of a package with 3 tests passes (`-test.v` output correct). | |
+| Size: compile.wasm / link.wasm / std archives (raw, gzip, brotli) | compile 38.5 / 8.1 / 5.3 MB; link 10.1 / 2.7 / 1.9 MB; std (135 archives, full allowlist) 42.8 / 9.9 / 7.1 MB (brotli q9). Total ≈ 14.3MB brotli | |
+| Cold load: fetch + `compileStreaming` for each tool | compile 195ms, link 88ms, checker 68ms, std 381ms (all localhost, uncompressed; used `compile(bytes)`, not streaming) | |
+| Warm compile+link+run, hello package with 3 tests | First run 2.5s (V8 tier-up), then 1.0s, then 0.5-0.6s: compile pkg ~70ms, compile main ~80-140ms, link ~350-650ms, run ~25ms | |
+| Peak memory during link | link instance's wasm memory ended at 104MB (compile: 24-28MB); JS heap ~190MB. That's a lower bound on peak, since the JS-side file copies are on top | |
+| checker.wasm size, and `check()` latency on a 100-line file | 9.0MB raw; 117-line file parse + typecheck (against std export data) + format: 150ms cold, 26-31ms warm. It reported the seeded type error at the right line/col | |
+
+Findings:
+
+- **The std archives dominate, and the allowlist is almost free.** `fmt` + `testing` alone pull in 37.6MB of the 44.9MB total (the runtime and reflect). Everything else in the allowlist adds 7.3MB raw: `text/template` +2.6MB, `math/big` +1.4MB, `log/slog` +1.2MB, `image` +0.7MB; `regexp`, `encoding/json` and `crypto/sha256` cost nothing extra because `testing` already imports them. So the "only if the spike shows room" tier stays in.
+- **Link is the cost:** ~60% of warm time, and it needs the most memory.
+- **Node's built-in WASI crashes (segfault) when linking anything bigger than a `println` program.** The same `link.wasm` works in Chromium. Not a problem for us, but desktop tests of the pipeline must run in a browser, not Node.
+- **Test packages:** this harness compiles `<name>.go` and `<name>_test.go` into one package, which handles in-package tests only. An external `package foo_test` file would need a second compile; handle that when building the runner.
+- **testmain** imports `testing/internal/testdeps` (a `go list` dependency we have to add to the export list; `build.sh` does).
+- **Not measured:** vet passes (`x/tools/go/analysis`) and the `tests()` listing in the checker. `check()` and `format()` are done.
+- The shim's `poll_oneoff` busy-waits, and its in-memory files reallocate on every growing write. Both are fine for the spike, but watch them if the linker's output writes get slow on the phone.
 
 If compile+link is too slow on the phone, ship the checker only and run tests at home.
 
 ## Open questions
 
-- Stdlib allowlist: see the proposal under Stdlib allowlist; confirm after the spike measures size.
+- Phone numbers for the spike. Re-check the allowlist if the phone runs out of memory or load time is too slow.
 
 ## Resolved
 
@@ -98,14 +108,14 @@ If compile+link is too slow on the phone, ship the checker only and run tests at
 - **Starter provenance:** by the time this is scaffolded, pizza-starter will support setting up into other directories, so we scaffold into this repo with `just new-app`-style tooling and keep the `STARTER` stamp. No hand-copying, and the app doesn't move into psychic-meme.
 - **iOS Safari memory cap:** unknown until the spike. Show a one-time toast to first-time iOS Safari users saying that compiling and linking may run out of memory there and may fail. Low priority; don't build anything more elaborate.
 
-## Stdlib allowlist (proposal)
+## Stdlib allowlist
 
-Basis: what Go by Example, A Tour of Go, and Effective Go actually import. `go list -deps` pulls in transitive deps, so `fmt` already brings `reflect`, `strconv`, `sort`, `unicode`, `os`, and `sync`; the cost of most extras is small. Measure the archive sizes in the spike and trim.
+Basis: what Go by Example, A Tour of Go, and Effective Go actually import. `go list -deps` pulls in transitive deps, so `fmt` already brings `reflect`, `strconv`, `sort`, `unicode`, `os`, and `sync`; the cost of most extras is small. The list is committed as `toolchain/allowlist.txt` (one import path per line, tiers as comments) and is the input to the build step. All four tiers are in: the spike showed the whole list adds only 7.3MB raw over `fmt` + `testing` alone.
 
 - **Core (always):** `fmt`, `errors`, `strings`, `strconv`, `sort`, `slices`, `maps`, `cmp`, `iter`, `math`, `math/rand`, `unicode`, `unicode/utf8`, `bytes`, `io`, `bufio`, `os`, `time`, `testing`
 - **Concurrency (Tour, Go by Example):** `sync`, `sync/atomic`, `context`
 - **Common in tutorials, modest size:** `regexp`, `encoding/json`, `container/heap`, `container/list`, `text/tabwriter`, `math/cmplx`, `math/bits`, `math/big`, `path`, `path/filepath`, `io/fs`, `flag`, `log`, `log/slog`
-- **Include only if the spike shows room:** `text/template`, `testing/quick`, `testing/fstest`, `testing/iotest`, `encoding/csv`, `encoding/hex`, `encoding/base64`, `hash/fnv`, `crypto/sha256`, `crypto/md5`, `image`
+- **Larger, included after the spike:** `text/template`, `testing/quick`, `testing/fstest`, `testing/iotest`, `encoding/csv`, `encoding/hex`, `encoding/base64`, `hash/fnv`, `crypto/sha256`, `crypto/md5`, `image`
 - **Excluded:** `net/*` (including `net/http` and `httptest`), `os/exec`, `os/signal`, `database/sql`, `html/template`, `plugin`, `runtime/debug`, `syscall`, `unsafe`-heavy packages, and `golang.org/x/tour`. None are meaningful on wasip1 or in an offline phone sandbox. This also reverses the "`httptest` is untested" note under Known limits: `httptest` is simply out.
 
 The Tour's `golang.org/x/tour` helpers (`pic`, `tree`, `wc`) aren't stdlib; exercises that depend on them need the unit seed to inline a stub.
