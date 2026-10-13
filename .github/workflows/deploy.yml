@@ -1,0 +1,37 @@
+# Deploy public/ to Cloudflare Workers static assets at pizza2go.dzza.workers.dev.
+# push to main: deploy. pull_request: --dry-run. workflow_dispatch: deploy.
+# Needs repo secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; without them, every run is a dry run.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          dry=
+          if [ "$EVENT" = pull_request ]; then dry=--dry-run; fi
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then dry=--dry-run; echo "::warning::no CLOUDFLARE_API_TOKEN secret; dry run only"; fi
+          npx --yes wrangler@4.141.0 deploy $dry \
+            --name pizza2go \
+            --assets public \
+            --compatibility-date 2026-09-25
