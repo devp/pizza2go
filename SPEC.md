@@ -75,16 +75,16 @@ CodeMirror 6, vendored, mounted inside a Lit element. Go language mode via `@cod
 
 ## Spike (first)
 
-Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. **Phone numbers are still to do:** serve `spike/` from a laptop (or deploy it) and open `spike/index.html` on the phone. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
+Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. **iOS Safari numbers are still to do.** The deployed spike at `/spike/` has been run in a Chromium browser (it reported `performance.memory`, which iOS Safari lacks), so the iOS Safari column is still empty; that's the one that matters. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
 
-| Metric | Desktop Chromium | Phone |
-|---|---|---|
-| `cmd/compile` builds and runs on wasip1 at all | Yes. Compile, link, and run of a package with 3 tests passes (`-test.v` output correct). | |
-| Size: compile.wasm / link.wasm / std archives (raw, gzip, brotli) | compile 38.5 / 8.1 / 5.3 MB; link 10.1 / 2.7 / 1.9 MB; std (135 archives, full allowlist) 42.8 / 9.9 / 7.1 MB (brotli q9). Total ≈ 14.3MB brotli | |
-| Cold load: fetch + `compileStreaming` for each tool | compile 195ms, link 88ms, checker 68ms, std 381ms (all localhost, uncompressed; used `compile(bytes)`, not streaming) | |
-| Warm compile+link+run, hello package with 3 tests | First run 2.5s (V8 tier-up), then 1.0s, then 0.5-0.6s: compile pkg ~70ms, compile main ~80-140ms, link ~350-650ms, run ~25ms | |
-| Peak memory during link | link instance's wasm memory ended at 104MB (compile: 24-28MB); JS heap ~190MB. That's a lower bound on peak, since the JS-side file copies are on top | |
-| checker.wasm size, and `check()` latency on a 100-line file | 9.0MB raw; 117-line file parse + typecheck (against std export data) + format: 150ms cold, 26-31ms warm. It reported the seeded type error at the right line/col | |
+| Metric | Desktop Chromium (headless, my VM) | Deployed spike, user's Chromium browser (device unconfirmed) | iOS Safari |
+|---|---|---|---|
+| `cmd/compile` builds and runs on wasip1 at all | Yes. Compile, link, and run of a package with 3 tests passes (`-test.v` output correct). | Yes, same result: 3 tests pass | |
+| Size: compile.wasm / link.wasm / std archives (raw, gzip, brotli) | compile 38.5 / 8.1 / 5.3 MB; link 10.1 / 2.7 / 1.9 MB; std (135 archives, full allowlist) 42.8 / 9.9 / 7.1 MB (brotli q9). Total ≈ 14.3MB brotli | Same toolchain files, but built by CI with the latest Go 1.24.x: compile 40.7MB, link 10.6MB, std 47.0MB (138 files), checker 9.0MB raw | |
+| Cold load: fetch + `compileStreaming` for each tool | compile 195ms, link 88ms, checker 68ms, std 381ms (all localhost, uncompressed; used `compile(bytes)`, not streaming) | compile fetch 1029ms + compile 34ms; link 454ms; std 976ms; checker 181ms (over the real Cloudflare deploy, before caching) | |
+| Warm compile+link+run, hello package with 3 tests | First run 2.5s (V8 tier-up), then 1.0s, then 0.5-0.6s: compile pkg ~70ms, compile main ~80-140ms, link ~350-650ms, run ~25ms | First run 452ms, warm 208-214ms (compile pkg 20-28, compile main ~29, link 140-153, run 2-14) | |
+| Peak memory during link | link instance's wasm memory ended at 104MB (compile: 24-28MB); JS heap ~190MB. That's a lower bound on peak, since the JS-side file copies are on top | link wasm memory 100MB (compile 24-28MB); JS heap 77-116MB | |
+| checker.wasm size, and `check()` latency on a 100-line file | 9.0MB raw; 117-line file parse + typecheck (against std export data) + format: 150ms cold, 26-31ms warm. It reported the seeded type error at the right line/col | 53ms cold, 7-8ms warm; same diagnostic at the same line/col | |
 
 Findings:
 
