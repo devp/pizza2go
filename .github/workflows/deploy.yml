@@ -1,4 +1,4 @@
-# Deploy public/ to Cloudflare Workers static assets at pizza2go.dzza.workers.dev.
+# Deploy public/ (including the spike, with a toolchain built in CI) to Cloudflare Workers static assets at pizza2go.dzza.workers.dev.
 # push to main: deploy. pull_request: --dry-run. workflow_dispatch: deploy.
 # Needs repo secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; without them, every run is a dry run.
 name: deploy
@@ -23,6 +23,16 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: spike/checker/go.mod
+      # Spike toolchain: public/spike is a symlink to spike/. Workers assets cap files at 25MiB,
+      # so compile.wasm is split into 20MB parts (spike/harness.js reassembles them).
+      - run: |
+          spike/build.sh spike/tc
+          GOOS=wasip1 GOARCH=wasm go build -C spike/checker -o ../tc/checker.wasm .
+          split -d -b 20000000 -a 1 spike/tc/compile.wasm spike/tc/compile.wasm.
+          rm spike/tc/compile.wasm spike/tc/exports.txt
       - env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

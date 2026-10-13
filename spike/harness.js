@@ -9,10 +9,24 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 const ms = (t) => Math.round(performance.now() - t);
 const R = { sizes: {}, cold: {}, runs: [] };
 
+// Workers static assets cap files at 25MiB, so CI may split a big file into name.0, name.1, ...
 async function fetchBytes(url) {
   const t = performance.now();
-  const r = await fetch(url);
-  const b = new Uint8Array(await r.arrayBuffer());
+  let r = await fetch(url);
+  let b;
+  if (r.ok) b = new Uint8Array(await r.arrayBuffer());
+  else {
+    const parts = [];
+    for (let i = 0; ; i++) {
+      r = await fetch(`${url}.${i}`);
+      if (!r.ok) break;
+      parts.push(new Uint8Array(await r.arrayBuffer()));
+    }
+    if (!parts.length) throw new Error('missing ' + url);
+    b = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let o = 0;
+    for (const p of parts) { b.set(p, o); o += p.length; }
+  }
   return [b, ms(t)];
 }
 
