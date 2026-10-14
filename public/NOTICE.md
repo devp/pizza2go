@@ -7,5 +7,6 @@
 - **`docs/spec.md`, `docs/effective-go.md`** — from go.dev, © The Go Authors, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); code samples BSD-3-Clause.
 - **`docs/packages.md`** — `go doc` output for the standard library, © The Go Authors, BSD-3-Clause.
 - **`docs/gobyexample.md`** — [Go by Example](https://gobyexample.com) by Mark McGranaghan and Eli Bendersky, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), reformatted.
+- **`docs/learnxinyminutes.md`** — [Learn X in Y minutes](https://learnxinyminutes.com/go/)' Go page by Sonia Keys and contributors, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), front matter dropped.
 
 Each doc names its source and license at its top. `docs/gen.mjs` (repo root) regenerates them.

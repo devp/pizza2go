@@ -7,6 +7,7 @@
 // - spec.md:        The Go Programming Language Specification (golang/go doc/go_spec.html)
 // - effective-go.md: Effective Go (golang/website), with its {{code}} snippets inlined
 // - gobyexample.md: Go by Example (mmcgrana/gobyexample), CC BY 3.0
+// - learnxinyminutes.md: Learn X in Y minutes' Go page, CC BY-SA 3.0
 // - packages.md:    `go doc -all` for the stdlib packages units use most
 //
 // The HTML ones stay HTML inside the .md: marked passes it through.
@@ -111,6 +112,15 @@ const sections = titles.map((title) => {
 fs.writeFileSync(
   path.join(out, "gobyexample.md"),
   page("Go by Example", `By Mark McGranaghan and Eli Bendersky, <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a>; from <a target="_blank" rel="noopener" href="https://gobyexample.com">gobyexample.com</a> (mmcgrana/gobyexample ${gbeRev}), reformatted for this app. Examples that use packages outside pizza2go's allowlist (net/http, os/exec, ...) won't run in a unit.`, sections.filter(Boolean).join("\n\n"))
+);
+
+// ---- Learn X in Y minutes ----
+const lxDir = path.join(tmp, "learnxinyminutes");
+const lxRev = clone("adambard/learnxinyminutes-docs", lxDir, []);
+const lx = fs.readFileSync(path.join(lxDir, "go.md"), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "");
+fs.writeFileSync(
+  path.join(out, "learnxinyminutes.md"),
+  page("Learn Go in Y minutes", `From <a target="_blank" rel="noopener" href="https://learnxinyminutes.com/go/">learnxinyminutes.com/go</a> (adambard/learnxinyminutes-docs ${lxRev}), <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>; front matter dropped.`, lx)
 );
 
 // ---- package docs ----

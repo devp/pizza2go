@@ -39,5 +39,6 @@ const ASSETS = [
   "docs/spec.md",
   "docs/effective-go.md",
   "docs/gobyexample.md",
+  "docs/learnxinyminutes.md",
   "docs/packages.md",
 ];

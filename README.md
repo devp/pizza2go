@@ -5,7 +5,7 @@ Write small Go packages on a phone against your own tests, offline: the real Go 
 - `public/` — the app (no build step; built on [pizza-starter](https://github.com/devp/psychic-meme/tree/main/pizza-starter), see `public/STARTER`). Deployed as-is, plus the toolchain.
 - `checker/` — `checker.wasm`: type errors, gofmt, test discovery, vet. `go test ./...` runs natively.
 - `toolchain/` — the pinned Go version, the stdlib allowlist, and `build.sh`, which builds what the app downloads into `public/toolchain/`.
-- `docs/gen.mjs` — regenerates `public/docs/` (spec, Effective Go, Go by Example, package docs).
+- `docs/gen.mjs` — regenerates `public/docs/` (spec, Effective Go, Go by Example, Learn X in Y minutes, package docs).
 - `spike/` — the original measurement harness; numbers are in SPEC.md.
 
 Locally:
