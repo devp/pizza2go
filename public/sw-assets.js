@@ -36,4 +36,8 @@ const ASSETS = [
   "vendor/browser_wasi_shim/debug.js",
   "vendor/browser_wasi_shim/strace.js",
   "icons/pizza2go.svg",
+  "docs/spec.md",
+  "docs/effective-go.md",
+  "docs/gobyexample.md",
+  "docs/packages.md",
 ];

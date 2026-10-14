@@ -191,6 +191,9 @@ doc-view th, doc-view td { border: 1px solid var(--border); padding: 0.35em 0.55
 doc-view a { color: var(--accent); }
 doc-view blockquote { margin: 0.8em 0; padding: 0.2em 0.9em; border-left: 3px solid var(--accent); color: var(--fg-dim); }
 .doc-status { color: var(--fg-dim); font-size: 13px; }
+doc-view .doc-source { color: var(--fg-dim); font-size: 12px; }
+doc-view .Note { padding: 0.5em 0.9em; border-left: 3px solid var(--accent); background: var(--bg-alt); }
+doc-view pre.ebnf, doc-view pre.grammar { white-space: pre; }
 
 .fab {
   position: fixed;

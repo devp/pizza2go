@@ -13,7 +13,8 @@
 //               {op: "run", id, pkg, files, tests, hasTestMain}
 // Messages out: {op: "ready"} | {op: "init-error", message}
 //               {op: "result", id, result}  (check)
-//               {op: "out", id, stream, line} ... then {op: "done", id, ok, phase, exit, ms}  (run)
+//               {op: "out", id, stream, line} ..., {op: "testing", id} when test.wasm starts,
+//               then {op: "done", id, ok, phase, exit, ms}  (run)
 
 import { WASI, WASIProcExit, File, OpenFile, Directory, PreopenDirectory, ConsoleStdout } from "./vendor/browser_wasi_shim/index.js";
 import { testmain } from "./lib/testmain.js";
@@ -171,6 +172,7 @@ function run({ id, pkg, files, tests, hasTestMain }) {
   const bin = /** @type {Uint8Array<ArrayBuffer>} */ (/** @type {File} */ (outDir.contents.get("test.wasm")).data);
   const testMod = new WebAssembly.Module(bin);
   ms.load = Math.round(performance.now() - t);
+  post({ op: "testing", id });
   t = performance.now();
   const testRoot = new Map(/** @type {[string, Inode][]} */ ([["tmp", new Directory(new Map())]]));
   const code = exec(testMod, ["test.wasm", "-test.v=true", "-test.paniconexit0", "-test.timeout=60s"], testRoot, out, [

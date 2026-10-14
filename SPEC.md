@@ -18,73 +18,91 @@ An offline PWA for writing small Go packages on an Android phone (with a Clicks 
 
 ## Architecture
 
-### Build time (desktop, per Go version)
+### Build time (CI, per Go version)
 
-- `GOOS=wasip1 GOARCH=wasm go build cmd/compile` → `compile.wasm`. Same for `cmd/link` → `link.wasm`.
-- Stdlib archives for the target: `GOOS=wasip1 GOARCH=wasm go list -export -deps -f '{{.ImportPath}}={{.Export}}' <allowlist>`. Copy them to `std/` and write an `importcfg` (`packagefile path=/std/...`).
-- `checker.wasm`: our own Go program using `go/parser`, `go/types`, `go/format`, `go/ast`, plus a subset of `x/tools/go/analysis` vet passes.
-- Everything is versioned by Go version, e.g. `toolchain/go1.27.2/`. The Go version is pinned per toolchain release, and a manifest (`toolchain/manifest.json`: Go version, file list, hashes) is the single source of truth for what's current.
+`toolchain/build.sh [outroot]` (default `public/toolchain`), with the Go version from `toolchain/go-version`:
+
+- `GOOS=wasip1 GOARCH=wasm go build -trimpath cmd/compile` → `compile.wasm`. Same for `cmd/link` → `link.wasm`.
+- `checker/` → `checker.wasm`: our Go program using `go/parser`, `go/types`, `go/format`, `go/doc`, and go vet's analyzers from `golang.org/x/tools/go/analysis` (all of `go vet`'s defaults except asmdecl, buildtag, cgocall, directive, framepointer, hostport, stdversion and httpresponse), driven in-process by a ~100-line driver (`checker/vet.go`).
+- Stdlib archives: `go list -export -deps` over `toolchain/allowlist.txt` plus `testing/internal/testdeps` (the generated testmain needs it), copied to `std/<path_with_underscores>.a`, with an `importcfg` (`packagefile path=/std/...`).
+- `toolchain/manifest.mjs` splits files over 20MB into `.0`, `.1`, ... parts (Workers assets cap files at 25MiB; `compile.wasm` is 53MB on 1.27) and writes `manifest.json`: `{go, dir, bytes, files: [{name, size, parts?}]}`.
+- Output: `public/toolchain/go1.27.2/...` + `public/toolchain/manifest.json`. Not committed; CI builds it before every deploy. On Go 1.27.2 it's 153 files, 125.7MB raw.
+- `.github/workflows/deploy.yml` also runs `go vet` + `go test` in `checker/` and the node unit tests before building.
 
 ### Run time
 
-| Worker | Lifetime | Job |
-|---|---|---|
-| checker | long-lived | `check(files)` → diagnostics JSON; `format(src)`; `tests(src)` → list of Test/Benchmark/Example funcs |
-| runner | one per run, `terminate()`d on timeout | compile → generate testmain → compile → link → run `test.wasm -test.v` |
+One worker, `go-worker.js`, holds the toolchain in memory (read from the toolchain cache, modules compiled once) and does both jobs. Every tool invocation is a fresh WASI instance (`@bjorn3/browser_wasi_shim` 0.4.2, vendored) over an in-memory filesystem.
 
-Runner pipeline (one fresh WASI instance per tool invocation; the `WebAssembly.Module` is compiled once per session):
-
-1. `compile -p <name> -importcfg /importcfg -o /out/<name>.a /src/<name>.go /src/<name>_test.go`
-2. Write `/src/_testmain.go` (`package main`, calls `testing.MainStart`) from the checker's test list, then `compile -p main …`
-3. `link -importcfg /importcfg -o /out/test.wasm /out/main.a` (importcfg plus `packagefile <name>=/out/<name>.a`)
-4. Run `test.wasm` and stream stdout/stderr to the UI.
-
-WASI shim: `@bjorn3/browser_wasi_shim` (or equivalent), vendored.
+- **check(pkg, files)** → `checker.wasm` → `{diagnostics, formatted, tests, hasTestMain}`. Diagnostics carry a source: `syntax`, `type`, `vet` or `unit` (wrong package name, external test package). Vet runs only when the package type-checks, as with `go vet`. Runs 400ms after typing stops.
+- **run** (compile → testmain → link → test):
+  1. `compile -p <name> -complete -importcfg /importcfg -o /out/<name>.a /src/<name>.go /src/<name>_test.go`
+  2. `lib/testmain.js` writes `/src/_testmain.go` from the checker's test list: tests, benchmarks, fuzz targets, examples with an output comment, and `TestMain` if present, as `go test` generates it. Then `compile -p main …`.
+  3. `link -importcfg /importcfg.main -o /out/test.wasm /out/main.a`
+  4. Run `test.wasm -test.v=true -test.paniconexit0 -test.timeout=60s`, with `/tmp` writable (`TMPDIR`, `t.TempDir()`), streaming output to the Output pane.
+- **Time limit:** the test binary gets 30s from when it starts (building is bounded; the code under test isn't). At the limit the main thread terminates the worker and starts a new one.
+- Run first gofmt's both files, then refuses to run while there are syntax, type or unit problems (vet findings don't block).
 
 ### Known limits
 
 - Single-threaded: goroutines work, but there's no parallelism and no `-race`.
-- No network or real OS. `net/*` (including `httptest`) is out of the allowlist.
-- Infinite loops are caught only by the runner timeout.
+- No network or real OS. `net/*` (including `httptest`) is out of the allowlist; importing a package outside it is a type error that says so.
+- Infinite loops are caught only by the 30s limit.
+- In-package tests only: a `package <name>_test` test file is reported, not run. (Supporting it means a second compile and an import of the unit's package.)
+- Benchmarks are compiled but not run (no `-test.bench`). Fuzz targets run their seed corpus only, as with plain `go test`.
+- Time zone is UTC (no tzdata).
 
 ### Editor
 
-A plain `<textarea>` per file (`<name>.go`, `<name>_test.go`), with pizza-repl's key row above the keyboard and the checker's diagnostics as a list below. Keymap: run tests, format, switch file, new unit. CodeMirror 6 (with a lint gutter) is the fallback if this proves too thin.
+A plain `<textarea>` showing one file at a time (`<name>.go` / `<name>_test.go`), with the caret position (line:col, in Go's byte columns) and:
+
+- **Key row:** `( ) { } [ ] := ⇥ ⋯`; ⋯ pops up shortcuts (defaults: `err != nil`, `!=`, `==`, `&&`, `||`, `<-`, `""`, `` ` ``), replaced by your own comma-separated list in Options.
+- **Keys:** Enter keeps the indentation (one deeper after `{ ( [`, and splits `{|}`); Tab / Shift+Tab indent and outdent; Ctrl/Alt+Enter runs tests; Ctrl+S or Alt+F gofmts; Alt+1 / Alt+2 switch file.
+- **Problems / Output pane** under the editor; tapping a problem jumps to it.
+- CodeMirror 6 (with a lint gutter) is the fallback if this proves too thin.
+
+### Units
+
+- One record per unit in `lib/store.js` (localStorage): name = package name, items = the two files. New units get `package <name>` and a failing `Test<Name>`, and open on the test file (tests first).
+- Names: lowercase letters and digits, not a keyword, not `main`, unique.
+- Status, per the current code (an FNV hash of both files): **done** (tests pass, no problems including vet, gofmt'd), **passing**, **failing**, **edited** (changed since the last run), **not run**.
 
 ## Offline and storage
 
 - The toolchain gets its own Cache Storage cache, fetched once. It's left **out** of the starter's refetch-everything `ASSETS` list (`sw-assets.js`): tens of MB redownloaded on every launch isn't viable.
 - **Cache name:** outside the starter's `PREFIX` (`scope + " "`), e.g. `scope + "#toolchain go<version>"`. The starter's `sw.js` deletes every `PREFIX` cache except its own on `activate`, so a `PREFIX` name would be wiped on every app update. This avoids changing the shared `sw.js`.
-- The app reads toolchain files straight from that cache (`caches.open(...).match(...)`), not through the service worker's `fetch` handler.
+- The worker reads toolchain files straight from that cache (`caches.open(...).match(...)`), not through the service worker's `fetch` handler. A cache is complete once it holds `manifest.json`, which is written last.
 - **Asking before the first download.** Nothing large downloads until the user says so; the app shell is ~200KB. Until the toolchain is cached, a card takes the place of Run and shows the download size, with **Download now** and **Wait for Wi-Fi**:
   - *Wait for Wi-Fi* is remembered, and starts the download by itself when `navigator.connection.type` becomes `"wifi"` while the app is open (Chrome on Android). Where the browser doesn't report the connection type, the second button is a plain **Later**.
   - If `navigator.connection.saveData` is on, *Wait for Wi-Fi* is the default.
   - All-or-nothing: the toolchain is usable only once every file in the manifest is cached. Files that finished survive an interruption, so a retry fetches only the rest. Progress shows while downloading. Downloads run only while the app is open (no Background Fetch in v1).
   - The same card, with the same two choices, is used for toolchain updates (below). Writing code works without the toolchain; checking and running don't.
-- **Download size:** ~14MB if Cloudflare serves the `.wasm` and `.a` files brotli-compressed, ~100MB if not. Not yet verified (this needs a look at the Network tab on the deployed site); the card shows whichever is true, from sizes in the manifest.
-- **Toolchain updates ride the normal site-update detection.** The manifest is small and goes in the starter's `ASSETS` list, so the refetch on launch/resume picks up a version change. When the manifest's Go version differs from the cached one, the download card offers the update (Download now / Wait for Wi-Fi). The old toolchain keeps working until the new cache is complete; then the app switches and deletes the old one. No separate update button.
+- **Download size:** the card shows the manifest's size, which is what's stored on the device (126MB for Go 1.27.2). The transfer is smaller if Cloudflare compresses the `.wasm` and `.a` files (roughly 7x with brotli). Not yet verified: a look at the Network tab on the deployed site will tell.
+- **Toolchain updates are noticed on launch.** The app fetches `toolchain/manifest.json` from the network on every start (it isn't in `ASSETS`: CI generates it, so it can't be listed). When the manifest's Go version differs from the cached one, the download card offers the update (Download now / Wait for Wi-Fi). The old toolchain keeps working until the new cache is complete; then the app switches and deletes the old one. No separate update button.
 - Units go in localStorage via the starter's `lib/store.js`.
 - Call `navigator.storage.persist()` on first run (before the toolchain download).
 - Everything under `public/` deploys, so `public/.assetsignore` keeps dev-only files (`package.json`, `tests/`, `scripts/`, `justfile`, ...) out of the deploy.
 
 ## Docs (vendored, offline)
 
-| Source | Use | License (verify before vendoring) |
+Generated by `node docs/gen.mjs` for the pinned Go version, committed to `public/docs/`, and listed in `ASSETS`. One tab each, rendered by `components/doc-view.js` (from pizza-repl-fennel) with a jump-to-section list.
+
+| Tab | Source | License |
 |---|---|---|
-| Go by Example | concept lookup | CC BY 3.0 |
-| A Tour of Go | curriculum, unit seeds | BSD-style |
-| Effective Go, language spec | idioms, ground truth | Go website terms |
-| Go Code Review Comments | review checklist | Go wiki |
-| `go doc -all` for ~20 core packages | API reference | BSD |
+| spec | `doc/go_spec.html` from golang/go at the pinned tag | CC BY 4.0 (code BSD) |
+| effective go | `_content/doc/effective_go.html` from golang/website, with its `{{code}}` snippets inlined | CC BY 4.0 (code BSD) |
+| by example | Go by Example (mmcgrana/gobyexample), comments as prose, code and output as blocks | CC BY 3.0 |
+| packages | `go doc -all` for 26 packages (fmt, errors, strings, strconv, slices, maps, sort, cmp, iter, math, math/rand, unicode, unicode/utf8, bytes, io, bufio, os, time, testing, sync, sync/atomic, context, regexp, encoding/json, container/heap, container/list) | BSD |
+
+About 1MB in all. Links to go.dev pages open in the browser. Not included (yet): A Tour of Go (its `.article` present format needs its own converter) and Go Code Review Comments.
 
 ## Export
 
-- v1: Web Share API with both files, or copy.
+- v1 (done): the unit menu (⋮) shares both files through the Web Share API where the browser can share files, or copies both, each under a `// ==== <name> ====` header.
 - Later: sync over remoteStorage (planned direction for pizza apps), plus a Go CLI at home that pulls units into a module and runs `go test ./...`.
 
 ## Spike (first)
 
-Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. The deployed spike at `/spike/` was run on desktop Chrome and on a Pixel 8a in Android Chrome (the target device). iOS is not a target. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
+Desktop numbers below are from headless Chromium (Playwright build 1194, V8) on a 4-core Linux VM, Go 1.24.7, with `@bjorn3/browser_wasi_shim` 0.4.2 over an in-memory filesystem; everything is served from localhost, so fetch times are optimistic. The spike, then deployed at `/spike/` (since retired: the app replaced it), was run on desktop Chrome and on a Pixel 8a in Android Chrome (the target device). iOS is not a target. Running it: `spike/build.sh <outdir>` builds the toolchain, and `node spike/run.mjs <outdir>` runs the harness in headless Chromium (needs `playwright-core`).
 
 | Metric | Desktop Chromium (headless, my VM) | Deployed spike, desktop Chrome | Deployed spike, Pixel 8a, Android Chrome |
 |---|---|---|---|
@@ -136,14 +154,24 @@ The Tour's `golang.org/x/tour` helpers (`pic`, `tree`, `wc`) aren't stdlib; exer
 
 ## Tasks
 
-1. Spike: build tools to wasip1, write a one-page harness, record the numbers above.
-2. ~~Scaffold from pizza-starter into this repo with its setup-into-other-dirs support. Keep the `STARTER` stamp.~~ Done: `public/`, stamped from psychic-meme `ee4feb2`.
-3. Checker worker + editor (textarea, key row, diagnostics list).
-4. Runner worker + testmain generation.
-5. Unit storage (`lib/store.js`) + unit list + new-unit template.
-6. Toolchain cache (outside `sw.js`'s prefix) + the download card + `persist()`.
-7. Vendor docs + a docs tab (borrow `components/doc-view.js` + `vendor/marked.min.js` from pizza-repl-fennel).
-8. Export via the share sheet (pattern from pizza-repl's `lib/export.js`).
+1. ~~Spike: build tools to wasip1, write a one-page harness, record the numbers above.~~
+2. ~~Scaffold from pizza-starter into this repo.~~ `public/`, stamped from psychic-meme `ee4feb2`.
+3. ~~Checker + editor (textarea, key row, diagnostics list).~~
+4. ~~Runner + testmain generation.~~
+5. ~~Unit storage + unit list + new-unit template.~~
+6. ~~Toolchain cache (outside `sw.js`'s prefix) + the download card + `persist()`.~~
+7. ~~Vendor docs + docs tabs.~~
+8. ~~Export via the share sheet, or copy.~~
+
+Tested: `checker/` has Go tests (`go test ./...`); `public/tests/` has node unit tests and a Playwright test that downloads the locally built toolchain and runs units end to end (check, gofmt, vet, run, examples, a hung run, reload, offline).
+
+### Next
+
+- Try it on the Pixel 8a with the Clicks keyboard, and adjust the key row and keys from use.
+- Verify whether Cloudflare compresses the toolchain on the wire.
+- External test packages (`package <name>_test`).
+- A Tour of Go as a docs tab, and maybe as unit seeds.
+- The export CLI at home (see Export).
 
 ## Non-goals
 

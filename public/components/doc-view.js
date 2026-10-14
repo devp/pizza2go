@@ -64,7 +64,8 @@ function outline(root) {
   for (const h of root.querySelectorAll("h2, h3")) {
     const text = (h.textContent ?? "").trim();
     if (!text) continue;
-    const base = text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
+    // Keep an id the doc already has: its own links point at it.
+    const base = h.id || text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
     let id = base;
     for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
     used.add(id);

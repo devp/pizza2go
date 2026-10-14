@@ -117,7 +117,7 @@ test("pizza2go in a real browser", { skip: !chromium && "playwright not installe
   page.on("pageerror", (e) => errors.push(e.message));
   const ok = (name, cond, extra = "") => t.test(name, () => assert.ok(cond, extra || name));
 
-  await page.goto(BASE + "index.html?runlimit=4000");
+  await page.goto(BASE + "index.html?runlimit=3000");
   await ok("title is pizza2go", (await page.title()) === "pizza2go");
   await ok("header says pizza2go", (await page.locator(".app-header h1").innerText()) === "pizza2go");
   await ok("starts on the units tab", await page.locator('.panel[data-panel="units"]').isVisible());
@@ -240,6 +240,23 @@ test("pizza2go in a real browser", { skip: !chromium && "playwright not installe
   await page.click("#unit-menu-btn");
   await page.click("#delete-btn");
   await ok("deleting goes back to an empty list", (await page.locator("unit-list").innerText()).includes("No units yet"));
+
+  // ---- docs ----
+  for (const [panel, min] of [["spec", 15], ["effective", 10], ["examples", 50], ["packages", 20]]) {
+    await page.click(`go-tabs [data-tab="${panel}"]`);
+    await page.locator(`.panel[data-panel="${panel}"] doc-view h2`).first().waitFor();
+    const n = await page.locator(`.panel[data-panel="${panel}"] doc-view h2`).count();
+    await ok(`${panel} doc renders`, n >= min, `${n} sections`);
+  }
+  await ok("jump button shows on a doc tab", await page.locator("#doc-index-btn").isVisible());
+  await page.click("#doc-index-btn");
+  await ok("jump list lists the doc's headings", (await page.locator("#doc-index-list .doc-index-item").count()) > 20);
+  await page.click("#doc-index-dialog [data-close]");
+  await page.click('go-tabs [data-tab="spec"]');
+  const specLink = page.locator('.panel[data-panel="spec"] doc-view a[href="#Types"]').first();
+  await ok("spec keeps its own section ids, so its links work", (await page.locator('.panel[data-panel="spec"] doc-view #Types').count()) === 1 && (await specLink.count()) === 1);
+  await page.click('go-tabs [data-tab="code"]');
+  await ok("jump button hidden off the docs", await page.locator("#doc-index-btn").isHidden());
 
   await ok("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 });

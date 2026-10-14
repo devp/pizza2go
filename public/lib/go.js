@@ -1,5 +1,5 @@
-// Main-thread side of go-worker.js: check and run, with a time limit on runs.
-// A run that's still going at the limit (an infinite loop, a deadlock the Go
+// Main-thread side of go-worker.js: check and run, with a time limit on the
+// test binary (building is bounded; your code isn't). A test run still going at the limit (an infinite loop, a deadlock the Go
 // runtime can't see) is stopped by terminating the worker; a new one starts.
 
 /**
@@ -19,7 +19,7 @@ export class GoWorker {
     this.cacheName = cacheName;
     this.manifest = manifest;
     this.nextId = 1;
-    /** @type {Map<number, {resolve: (v: any) => void, onLine?: (stream: string, line: string) => void}>} */
+    /** @type {Map<number, {resolve: (v: any) => void, onLine?: (stream: string, line: string) => void, onTesting?: () => void}>} */
     this.pending = new Map();
     const w = this.spawn();
     this.worker = w.worker;
@@ -37,6 +37,7 @@ export class GoWorker {
         else if (m.op === "init-error") reject(new Error(m.message));
         else if (m.op === "result") this.settle(m.id, m.result);
         else if (m.op === "out") this.pending.get(m.id)?.onLine?.(m.stream, m.line);
+        else if (m.op === "testing") this.pending.get(m.id)?.onTesting?.();
         else if (m.op === "done") this.settle(m.id, { ok: m.ok, phase: m.phase, exit: m.exit, ms: m.ms });
       });
       worker.addEventListener("error", (e) => reject(new Error(e.message || "worker failed to start")));
@@ -68,14 +69,16 @@ export class GoWorker {
   /**
    * @param {{pkg: string, files: Record<string, string>, tests: TestFunc[], hasTestMain: boolean}} unit
    * @param {(stream: string, line: string) => void} onLine
-   * @param {number} limitMs
+   * @param {number} limitMs time limit for the test binary, from when it starts
    * @returns {Promise<RunResult>}
    */
   async run(unit, onLine, limitMs) {
     await this.ready;
     const id = this.nextId++;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
+      /** @type {ReturnType<typeof setTimeout>|undefined} */
+      let timer;
+      const stop = () => {
         // Kills any queued checks too; they resolve as errors and get redone.
         this.worker.terminate();
         for (const [pid, p] of this.pending) if (pid !== id) p.resolve({ diagnostics: [], formatted: {}, tests: [], hasTestMain: false, error: "restarted" });
@@ -84,9 +87,10 @@ export class GoWorker {
         const w = this.spawn();
         this.worker = w.worker;
         this.ready = w.ready;
-      }, limitMs);
+      };
       this.pending.set(id, {
         onLine,
+        onTesting: () => (timer = setTimeout(stop, limitMs)),
         resolve: (v) => {
           clearTimeout(timer);
           resolve(v);
