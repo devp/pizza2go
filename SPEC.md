@@ -53,10 +53,19 @@ CodeMirror 6, vendored, mounted inside a Lit element. Go language mode via `@cod
 
 ## Offline and storage
 
-- The toolchain gets its own cache, `PREFIX + "go<version>"`, fetched once. It's left **out** of the starter's refetch-everything `ASSETS` list (`sw.js`): tens of MB redownloaded on every launch, with an all-or-nothing update, isn't viable.
-- **Toolchain updates ride the normal site-update detection.** The manifest is small and goes in the starter's `ASSETS` list, so the refetch on launch/resume picks up a version change. When the manifest's Go version differs from the cached `go<version>`, the update toast offers "Update toolchain": download the new cache in the background, switch once it's complete, then delete the old one. No separate update button.
+- The toolchain gets its own Cache Storage cache, fetched once. It's left **out** of the starter's refetch-everything `ASSETS` list (`sw-assets.js`): tens of MB redownloaded on every launch isn't viable.
+- **Cache name:** outside the starter's `PREFIX` (`scope + " "`), e.g. `scope + "#toolchain go<version>"`. The starter's `sw.js` deletes every `PREFIX` cache except its own on `activate`, so a `PREFIX` name would be wiped on every app update. This avoids changing the shared `sw.js`.
+- The app reads toolchain files straight from that cache (`caches.open(...).match(...)`), not through the service worker's `fetch` handler.
+- **Asking before the first download.** Nothing large downloads until the user says so; the app shell is ~200KB. Until the toolchain is cached, a card takes the place of Run and shows the download size, with **Download now** and **Wait for Wi-Fi**:
+  - *Wait for Wi-Fi* is remembered, and starts the download by itself when `navigator.connection.type` becomes `"wifi"` while the app is open (Chrome on Android). Where the browser doesn't report the connection type, the second button is a plain **Later**.
+  - If `navigator.connection.saveData` is on, *Wait for Wi-Fi* is the default.
+  - All-or-nothing: the toolchain is usable only once every file in the manifest is cached. Files that finished survive an interruption, so a retry fetches only the rest. Progress shows while downloading. Downloads run only while the app is open (no Background Fetch in v1).
+  - The same card, with the same two choices, is used for toolchain updates (below). Writing code works without the toolchain; checking and running don't.
+- **Download size:** ~14MB if Cloudflare serves the `.wasm` and `.a` files brotli-compressed, ~100MB if not. Not yet verified (this needs a look at the Network tab on the deployed site); the card shows whichever is true, from sizes in the manifest.
+- **Toolchain updates ride the normal site-update detection.** The manifest is small and goes in the starter's `ASSETS` list, so the refetch on launch/resume picks up a version change. When the manifest's Go version differs from the cached one, the download card offers the update (Download now / Wait for Wi-Fi). The old toolchain keeps working until the new cache is complete; then the app switches and deletes the old one. No separate update button.
 - Units go in IndexedDB (or OPFS), not localStorage.
-- Call `navigator.storage.persist()` on first run.
+- Call `navigator.storage.persist()` on first run (before the toolchain download).
+- Everything under `public/` deploys, so `public/.assetsignore` keeps dev-only files (`package.json`, `tests/`, `scripts/`, `justfile`, ...) out of the deploy.
 
 ## Docs (vendored, offline)
 
@@ -101,7 +110,9 @@ The fallback of shipping the checker only is not needed: compile+link is fast en
 
 ## Open questions
 
-- Whether the download size (~14MB brotli) is acceptable on mobile data; consider showing progress and Wi-Fi-only fetching on first run.
+- **Editor.** CodeMirror 6 with a lint gutter (as planned), or the pizza-repl textarea + key row with diagnostics as a tappable list under the editor? Recommendation: the textarea + key row first (proven on the Pixel + Clicks, nearly free to borrow), CodeMirror only if that feels thin.
+- **Unit storage.** IndexedDB (as planned) or the starter's `lib/store.js` (localStorage)? Units are a few KB of text each. Recommendation: localStorage for v1; the toolchain is in Cache Storage either way.
+- **Go version.** CI builds the latest 1.24.x (from `spike/checker/go.mod`); this spec said 1.25. Recommendation: pin the newest stable release, recorded in `toolchain/manifest.json`.
 
 ## Resolved
 
@@ -124,13 +135,13 @@ The Tour's `golang.org/x/tour` helpers (`pic`, `tree`, `wc`) aren't stdlib; exer
 ## Tasks
 
 1. Spike: build tools to wasip1, write a one-page harness, record the numbers above.
-2. Scaffold from pizza-starter into this repo with its setup-into-other-dirs support. Keep the `STARTER` stamp.
+2. ~~Scaffold from pizza-starter into this repo with its setup-into-other-dirs support. Keep the `STARTER` stamp.~~ Done: `public/`, stamped from psychic-meme `ee4feb2`.
 3. Checker worker + CodeMirror lint gutter.
 4. Runner worker + testmain generation.
 5. Unit storage (IndexedDB) + unit list + new-unit template.
-6. Toolchain cache in `sw.js` + `persist()`.
-7. Vendor docs + a docs tab.
-8. Export via the share sheet.
+6. Toolchain cache (outside `sw.js`'s prefix) + the download card + `persist()`.
+7. Vendor docs + a docs tab (borrow `components/doc-view.js` + `vendor/marked.min.js` from pizza-repl-fennel).
+8. Export via the share sheet (pattern from pizza-repl's `lib/export.js`).
 
 ## Non-goals
 

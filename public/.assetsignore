@@ -1,0 +1,12 @@
+# Dev-only files; everything else under public/ deploys.
+.assetsignore
+.gitignore
+.node-version
+node_modules
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+jsconfig.json
+justfile
+scripts
+tests
