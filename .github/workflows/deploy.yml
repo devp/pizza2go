@@ -25,7 +25,8 @@ jobs:
           node-version: 22
       - uses: actions/setup-go@v6
         with:
-          go-version-file: spike/checker/go.mod
+          # The pinned Go version; the toolchain shipped to the browser is built with it.
+          go-version-file: toolchain/go-version
       # Spike toolchain: public/spike is a symlink to spike/. Workers assets cap files at 25MiB,
       # so compile.wasm is split into 20MB parts (spike/harness.js reassembles them).
       - run: |

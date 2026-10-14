@@ -6,7 +6,7 @@ An offline PWA for writing small Go packages on an Android phone (with a Clicks 
 
 - **Real Go toolchain in the browser.** `cmd/compile` + `cmd/link` built for `GOOS=wasip1`, running in Web Workers against an in-memory filesystem. Rejected: TinyGo (it compiles *to* wasm and can't run *in* it, because of LLVM), Yaegi and GopherJS (each teaches a dialect of Go).
 - **Unit = one real package.** `package <name>`, `<name>.go` + `<name>_test.go`, stdlib only. A unit is done when its tests pass, `go vet` is clean, and the code is gofmt'd.
-- **Writing is mechanical on purpose.** gofmt on save, live type errors, keybindings. No autocomplete and no snippets.
+- **Writing is mechanical on purpose.** gofmt on save, live type errors, keybindings, a key row for the symbols the phone keyboard buries. No autocomplete and no built-in snippets (the ⋯ shortcuts are ones you add yourself).
 - **Hosting:** `https://pizza2go.dzza.workers.dev`, Cloudflare Workers static assets, deployed from `public/` by `.github/workflows/deploy.yml` on push to main (same setup as psychic-meme; PRs get a `--dry-run`). It gets its own origin so its large caches and possible eviction can't take down the other pizza apps' data.
 - **Stdlib only.** There's no `go` command in the browser, so no module resolution.
 
@@ -23,7 +23,7 @@ An offline PWA for writing small Go packages on an Android phone (with a Clicks 
 - `GOOS=wasip1 GOARCH=wasm go build cmd/compile` → `compile.wasm`. Same for `cmd/link` → `link.wasm`.
 - Stdlib archives for the target: `GOOS=wasip1 GOARCH=wasm go list -export -deps -f '{{.ImportPath}}={{.Export}}' <allowlist>`. Copy them to `std/` and write an `importcfg` (`packagefile path=/std/...`).
 - `checker.wasm`: our own Go program using `go/parser`, `go/types`, `go/format`, `go/ast`, plus a subset of `x/tools/go/analysis` vet passes.
-- Everything is versioned by Go version, e.g. `toolchain/go1.25.x/`. The Go version is pinned per toolchain release, and a manifest (`toolchain/manifest.json`: Go version, file list, hashes) is the single source of truth for what's current.
+- Everything is versioned by Go version, e.g. `toolchain/go1.27.2/`. The Go version is pinned per toolchain release, and a manifest (`toolchain/manifest.json`: Go version, file list, hashes) is the single source of truth for what's current.
 
 ### Run time
 
@@ -49,7 +49,7 @@ WASI shim: `@bjorn3/browser_wasi_shim` (or equivalent), vendored.
 
 ### Editor
 
-CodeMirror 6, vendored, mounted inside a Lit element. Go language mode via `@codemirror/lang-go` (confirm it exists before relying on it). The lint gutter is fed by the checker. Keymap: run tests, format, switch file, new unit.
+A plain `<textarea>` per file (`<name>.go`, `<name>_test.go`), with pizza-repl's key row above the keyboard and the checker's diagnostics as a list below. Keymap: run tests, format, switch file, new unit. CodeMirror 6 (with a lint gutter) is the fallback if this proves too thin.
 
 ## Offline and storage
 
@@ -63,7 +63,7 @@ CodeMirror 6, vendored, mounted inside a Lit element. Go language mode via `@cod
   - The same card, with the same two choices, is used for toolchain updates (below). Writing code works without the toolchain; checking and running don't.
 - **Download size:** ~14MB if Cloudflare serves the `.wasm` and `.a` files brotli-compressed, ~100MB if not. Not yet verified (this needs a look at the Network tab on the deployed site); the card shows whichever is true, from sizes in the manifest.
 - **Toolchain updates ride the normal site-update detection.** The manifest is small and goes in the starter's `ASSETS` list, so the refetch on launch/resume picks up a version change. When the manifest's Go version differs from the cached one, the download card offers the update (Download now / Wait for Wi-Fi). The old toolchain keeps working until the new cache is complete; then the app switches and deletes the old one. No separate update button.
-- Units go in IndexedDB (or OPFS), not localStorage.
+- Units go in localStorage via the starter's `lib/store.js`.
 - Call `navigator.storage.persist()` on first run (before the toolchain download).
 - Everything under `public/` deploys, so `public/.assetsignore` keeps dev-only files (`package.json`, `tests/`, `scripts/`, `justfile`, ...) out of the deploy.
 
@@ -110,11 +110,13 @@ The fallback of shipping the checker only is not needed: compile+link is fast en
 
 ## Open questions
 
-- **Editor.** CodeMirror 6 with a lint gutter (as planned), or the pizza-repl textarea + key row with diagnostics as a tappable list under the editor? Recommendation: the textarea + key row first (proven on the Pixel + Clicks, nearly free to borrow), CodeMirror only if that feels thin.
-- **Unit storage.** IndexedDB (as planned) or the starter's `lib/store.js` (localStorage)? Units are a few KB of text each. Recommendation: localStorage for v1; the toolchain is in Cache Storage either way.
-- **Go version.** CI builds the latest 1.24.x (from `spike/checker/go.mod`); this spec said 1.25. Recommendation: pin the newest stable release, recorded in `toolchain/manifest.json`.
+(None right now.)
 
 ## Resolved
+
+- **Editor:** the pizza-repl textarea + key row (`{ } ( ) [ ]`, `:=`, `err != nil`, Tab; ⋯ pops up your own shortcuts from Options), with checker diagnostics as a tappable list under the editor (tap jumps to the line). CodeMirror 6 only if this feels too thin in use.
+- **Unit storage:** the starter's `lib/store.js` (localStorage). Units are a few KB each. The toolchain stays in Cache Storage.
+- **Go version:** the newest stable release, pinned in `toolchain/go-version` (now 1.27.2), which CI's `setup-go` reads. Bump it deliberately; the manifest records it.
 
 - **Go version pinning:** pinned per toolchain release; updates are detected through the manifest and the normal site-update flow (see Offline and storage).
 - **Starter provenance:** by the time this is scaffolded, pizza-starter will support setting up into other directories, so we scaffold into this repo with `just new-app`-style tooling and keep the `STARTER` stamp. No hand-copying, and the app doesn't move into psychic-meme.
@@ -136,9 +138,9 @@ The Tour's `golang.org/x/tour` helpers (`pic`, `tree`, `wc`) aren't stdlib; exer
 
 1. Spike: build tools to wasip1, write a one-page harness, record the numbers above.
 2. ~~Scaffold from pizza-starter into this repo with its setup-into-other-dirs support. Keep the `STARTER` stamp.~~ Done: `public/`, stamped from psychic-meme `ee4feb2`.
-3. Checker worker + CodeMirror lint gutter.
+3. Checker worker + editor (textarea, key row, diagnostics list).
 4. Runner worker + testmain generation.
-5. Unit storage (IndexedDB) + unit list + new-unit template.
+5. Unit storage (`lib/store.js`) + unit list + new-unit template.
 6. Toolchain cache (outside `sw.js`'s prefix) + the download card + `persist()`.
 7. Vendor docs + a docs tab (borrow `components/doc-view.js` + `vendor/marked.min.js` from pizza-repl-fennel).
 8. Export via the share sheet (pattern from pizza-repl's `lib/export.js`).
