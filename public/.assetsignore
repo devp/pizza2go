@@ -10,3 +10,4 @@ jsconfig.json
 justfile
 scripts
 tests
+*.d.ts

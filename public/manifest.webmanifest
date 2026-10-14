@@ -1,6 +1,7 @@
 {
-  "name": "pizza-starter",
-  "short_name": "pizza",
+  "name": "pizza2go",
+  "short_name": "pizza2go",
+  "description": "Write small Go packages against your own tests, offline.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
@@ -9,7 +10,7 @@
   "theme_color": "#12141a",
   "icons": [
     {
-      "src": "icons/pizza.svg",
+      "src": "icons/pizza2go.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

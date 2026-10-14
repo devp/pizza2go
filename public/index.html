@@ -6,11 +6,11 @@
      half is syncAppHeight() in lib/viewport.js. Neither works alone. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#12141a">
-<title>pizza-starter</title>
+<title>pizza2go</title>
 <!-- localStorage key prefix; state.js and the theme script below read it. -->
 <meta name="app-ns" content="pizza2go">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/pizza.svg" type="image/svg+xml">
+<link rel="icon" href="icons/pizza2go.svg" type="image/svg+xml">
 <link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="app.css">
@@ -38,60 +38,85 @@
 <body>
 
 <header class="app-header">
-  <h1>pizza-starter</h1>
+  <h1>pizza2go</h1>
   <button id="settings-btn" class="icon-btn" type="button" aria-label="Options" aria-haspopup="dialog">∆</button>
 </header>
 
-<pizza-tabs class="tabs"></pizza-tabs>
+<go-tabs class="tabs"></go-tabs>
 
 <main class="panels">
-  <section class="panel active" data-panel="list">
-    <pizza-checklist></pizza-checklist>
+  <section class="panel" data-panel="units">
+    <form class="add-row" id="new-unit-form">
+      <input id="new-unit-name" class="text-field" type="text" placeholder="package name, e.g. stack" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="New unit's package name">
+      <button type="submit">+ New unit</button>
+    </form>
+    <p class="hint error" id="new-unit-error" hidden></p>
+    <unit-list id="unit-list"></unit-list>
   </section>
 
-  <section class="panel" data-panel="summary">
-    <p class="panel-note">The list again, built on lib/reactive-element.js instead of Lit. Tap an item to tick it off.</p>
-    <pizza-list-summary title-text="Setup"></pizza-list-summary>
-  </section>
-
-  <section class="panel" data-panel="log">
-    <p class="panel-note">What you've done in the list tab. Appended, never rebuilt.</p>
-    <append-log id="activity-log"></append-log>
-    <div class="add-row">
-      <button type="button" id="clear-log">Clear the log</button>
+  <section class="panel code-panel" data-panel="code">
+    <download-card id="download-card"></download-card>
+    <div class="code-bar">
+      <div class="file-switch" role="tablist" aria-label="File">
+        <button type="button" role="tab" data-file="go" id="file-go">unit.go</button>
+        <button type="button" role="tab" data-file="test" id="file-test">unit_test.go</button>
+      </div>
+      <span class="caret-pos" id="caret-pos" aria-live="off"></span>
+      <button type="button" id="unit-menu-btn" class="icon-btn" aria-label="Unit actions" aria-haspopup="dialog">⋮</button>
     </div>
-  </section>
-
-  <section class="panel" data-panel="about">
-    <div class="prose">
-      <h2>What this is</h2>
-      <p>
-        A no-build, offline-first, installable web app skeleton. Add it to your
-        home screen, turn on airplane mode, and it still works.
-      </p>
-      <p>
-        There is no build step. The files you edit are the files that ship.
-        <code>sw-assets.js</code> lists them for offline; <code>just warnings</code>
-        flags that list when a file is added or removed.
-      </p>
-      <h2>Where things are</h2>
-      <ul>
-        <li><code>lib/viewport.js</code> — the mobile keyboard fix. The reason this exists.</li>
-        <li><code>lib/store.js</code> — localStorage with subscribers, so nothing goes stale.</li>
-        <li><code>app.js</code> — all the wiring, in the open.</li>
-        <li><code>components/append-log.js</code> — a component built to travel: it takes
-            properties, imports no app state, and leans on Lit's keyed <code>repeat()</code>
-            so existing entries keep their DOM nodes and a screen reader only hears
-            what's new.</li>
-        <li><code>components/list-summary.js</code> — the same list without Lit, on
-            <code>lib/reactive-element.js</code>: a small base class whose header lists
-            what it leaves out.</li>
-        <li><code>vendor/lit.js</code> — Lit, vendored. 17.4KB raw, 6.8KB gzipped.</li>
-      </ul>
-      <p>The list tab tells you what to change.</p>
+    <p class="hint no-unit" id="no-unit">No unit open. Start one in the units tab.</p>
+    <textarea id="editor" class="editor" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" wrap="off" aria-label="Go source"></textarea>
+    <div class="pane" id="pane">
+      <div class="pane-tabs" role="tablist">
+        <button type="button" role="tab" data-pane="problems" id="pane-problems">Problems</button>
+        <button type="button" role="tab" data-pane="output" id="pane-output">Output</button>
+        <span class="pane-status" id="pane-status"></span>
+        <button type="button" class="pane-toggle" id="pane-toggle" aria-label="Show or hide the pane">▾</button>
+      </div>
+      <div class="pane-body" id="problems" data-pane-body="problems"></div>
+      <div class="pane-body run-output" id="run-output" data-pane-body="output"></div>
+    </div>
+    <div class="key-row" id="key-row">
+      <button type="button" data-ins="(" class="k-paren" aria-label="Insert (">(</button>
+      <button type="button" data-ins=")" class="k-paren" aria-label="Insert )">)</button>
+      <button type="button" data-ins="{" class="k-brace" aria-label="Insert {">{</button>
+      <button type="button" data-ins="}" class="k-brace" aria-label="Insert }">}</button>
+      <button type="button" data-ins="[" class="k-bracket" aria-label="Insert [">[</button>
+      <button type="button" data-ins="]" class="k-bracket" aria-label="Insert ]">]</button>
+      <button type="button" data-ins=":=" class="k-op" aria-label="Insert :=">:=</button>
+      <button type="button" data-ins="&#9;" class="k-op" aria-label="Insert tab">⇥</button>
+      <button type="button" id="shortcuts-btn" class="k-more" aria-label="Shortcuts" aria-haspopup="dialog">⋯</button>
+    </div>
+    <div class="action-row">
+      <button type="button" id="fmt-btn">gofmt</button>
+      <button type="button" id="run-btn" class="primary">Run tests</button>
     </div>
   </section>
 </main>
+
+<button id="doc-index-btn" class="fab" type="button" aria-label="Jump to section" aria-haspopup="dialog" hidden>≡</button>
+
+<dialog id="doc-index-dialog" class="settings">
+  <h2>Jump to section</h2>
+  <div class="doc-index-list" id="doc-index-list"></div>
+  <button type="button" class="primary" data-close>Close</button>
+</dialog>
+
+<dialog id="shortcuts-dialog" class="settings">
+  <h2>Shortcuts</h2>
+  <div class="command-list" id="shortcuts-list"></div>
+  <button type="button" class="primary" data-close>Close</button>
+</dialog>
+
+<dialog id="unit-dialog" class="settings">
+  <h2 id="unit-dialog-title">Unit</h2>
+  <div class="command-list">
+    <button type="button" class="command-item" id="share-btn">Share both files…</button>
+    <button type="button" class="command-item" id="copy-btn">Copy both files</button>
+    <button type="button" class="command-item danger" id="delete-btn">Delete this unit</button>
+  </div>
+  <button type="button" class="primary" data-close>Close</button>
+</dialog>
 
 <dialog id="settings-dialog" class="settings">
   <h2>Options</h2>
@@ -114,15 +139,48 @@
   </section>
 
   <section>
+    <h3>Shortcuts (⋯ key)</h3>
+    <input id="shortcuts-field" class="text-field" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Shortcuts, comma-separated">
+    <p class="hint">Comma-separated text to paste at the caret. Leave blank for the defaults.</p>
+  </section>
+
+  <section>
+    <h3>Keyboard</h3>
+    <p class="hint">
+      Ctrl or Alt + Enter: run tests. Ctrl+S or Alt+F: gofmt. Alt+1 / Alt+2: switch file.
+      Tab indents, Shift+Tab outdents, Enter keeps the indentation.
+    </p>
+  </section>
+
+  <section>
+    <h3>Go toolchain</h3>
+    <p class="hint" id="toolchain-info"></p>
+    <div class="swatches">
+      <button type="button" class="swatch" id="toolchain-delete-btn">Delete it from this device</button>
+    </div>
+  </section>
+
+  <section class="about">
+    <h3>About</h3>
+    <p>Write small Go packages against your own tests, offline, and take them home unchanged.</p>
+    <p>
+      Runs the real Go compiler and linker (<code>cmd/compile</code>, <code>cmd/link</code>) built for WebAssembly.
+      Go is © The Go Authors, BSD-style license. Not affiliated with the Go project.
+    </p>
+  </section>
+
+  <section>
     <h3>Share</h3>
     <!-- A global page, not part of this app: psychic-meme/misc/qr/ draws a QR
          code for whatever ?q= holds. app.js adds ?q=<this app's URL>. -->
     <a id="share-link" class="share-link" href="https://devp.github.io/psychic-meme/misc/qr/" target="_blank" rel="noopener">Show a QR code for this app ↗</a>
   </section>
 
-  <button type="button" id="settings-close" class="primary">Done</button>
+  <button type="button" class="primary" data-close>Done</button>
 </dialog>
 
+<!-- Classic script: marked defines a global. Module scripts run after it. -->
+<script src="vendor/marked.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

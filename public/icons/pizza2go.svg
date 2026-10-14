@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="pizza2go">
+  <rect width="512" height="512" rx="96" fill="#12141a"/>
+  <path d="M110 162 Q256 96 402 162 L392 200 Q256 142 120 200 Z" fill="#00add8"/>
+  <path d="M120 200 Q256 142 392 200 L256 438 Z" fill="#e8b84b"/>
+  <circle cx="220" cy="230" r="18" fill="#00add8"/>
+  <circle cx="292" cy="230" r="18" fill="#00add8"/>
+  <circle cx="226" cy="236" r="7" fill="#12141a"/>
+  <circle cx="298" cy="236" r="7" fill="#12141a"/>
+</svg>
